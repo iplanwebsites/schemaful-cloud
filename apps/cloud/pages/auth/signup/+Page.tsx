@@ -1,7 +1,80 @@
+import { useState } from "react";
 import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input, Label } from "@schemaful/ui";
-import { Cloud } from "lucide-react";
+import { Cloud, Loader2 } from "lucide-react";
+import { signInWithCredentials } from "@schemaful-ee/auth";
+
+interface SignupError {
+  error?: string;
+  code?: string;
+  details?: Record<string, string[]>;
+}
 
 export default function Page() {
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<SignupError | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    setError(null);
+    setFieldErrors({});
+
+    try {
+      // Step 1: Create the account
+      const response = await fetch("/api/auth/signup", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ name, email, password }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        if (response.status === 409) {
+          // Email already exists
+          setFieldErrors({ email: "An account with this email already exists" });
+        } else if (response.status === 400 && data.details) {
+          // Validation errors
+          const errors: Record<string, string> = {};
+          for (const [field, messages] of Object.entries(data.details)) {
+            if (Array.isArray(messages) && messages.length > 0) {
+              errors[field] = messages[0];
+            }
+          }
+          setFieldErrors(errors);
+        } else {
+          setError(data);
+        }
+        setIsLoading(false);
+        return;
+      }
+
+      // Step 2: Sign in with the new account using proper Auth.js flow
+      const signInResult = await signInWithCredentials(email, password, {
+        redirect: false,
+        callbackUrl: data.redirectUrl || "/workspaces/new",
+      });
+
+      if (signInResult.ok) {
+        // Redirect to workspace creation
+        window.location.href = signInResult.url || data.redirectUrl || "/workspaces/new";
+      } else {
+        // Account created but couldn't sign in automatically - redirect to sign in page
+        window.location.href = "/auth/signin?registered=true";
+      }
+    } catch (err) {
+      console.error("Signup error:", err);
+      setError({ error: "An unexpected error occurred. Please try again." });
+      setIsLoading(false);
+    }
+  };
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-muted/50 p-4">
       <Card className="w-full max-w-md">
@@ -46,21 +119,70 @@ export default function Page() {
             </div>
           </div>
 
-          <form className="space-y-4">
+          {error?.error && (
+            <div className="mb-4 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+              {error.error}
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="name">Name</Label>
-              <Input id="name" type="text" placeholder="Your name" />
+              <Input
+                id="name"
+                type="text"
+                placeholder="Your name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                disabled={isLoading}
+                aria-invalid={!!fieldErrors.name}
+              />
+              {fieldErrors.name && (
+                <p className="text-sm text-destructive">{fieldErrors.name}</p>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
-              <Input id="email" type="email" placeholder="you@example.com" required />
+              <Input
+                id="email"
+                type="email"
+                placeholder="you@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                disabled={isLoading}
+                required
+                aria-invalid={!!fieldErrors.email}
+              />
+              {fieldErrors.email && (
+                <p className="text-sm text-destructive">{fieldErrors.email}</p>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
-              <Input id="password" type="password" placeholder="At least 8 characters" required minLength={8} />
+              <Input
+                id="password"
+                type="password"
+                placeholder="At least 8 characters"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                disabled={isLoading}
+                required
+                minLength={8}
+                aria-invalid={!!fieldErrors.password}
+              />
+              {fieldErrors.password && (
+                <p className="text-sm text-destructive">{fieldErrors.password}</p>
+              )}
             </div>
-            <Button type="submit" className="w-full">
-              Create Account
+            <Button type="submit" className="w-full" disabled={isLoading}>
+              {isLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Creating account...
+                </>
+              ) : (
+                "Create Account"
+              )}
             </Button>
           </form>
 

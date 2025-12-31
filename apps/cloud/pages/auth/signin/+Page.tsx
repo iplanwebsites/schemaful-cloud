@@ -1,7 +1,42 @@
+import { useState, useEffect } from "react";
 import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input, Label } from "@schemaful/ui";
-import { Cloud } from "lucide-react";
+import { Cloud, Loader2 } from "lucide-react";
+import { signInWithCredentials } from "@schemaful-ee/auth";
 
 export default function Page() {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  // Check for success message from signup redirect
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("registered") === "true") {
+      setSuccessMessage("Account created successfully. Please sign in.");
+    }
+  }, []);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    setError(null);
+
+    const result = await signInWithCredentials(email, password, {
+      redirect: false,
+      callbackUrl: "/workspaces",
+    });
+
+    if (result.ok) {
+      // Redirect to workspaces or the callback URL
+      window.location.href = result.url || "/workspaces";
+    } else {
+      setError(result.error || "Invalid email or password");
+      setIsLoading(false);
+    }
+  };
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-muted/50 p-4">
       <Card className="w-full max-w-md">
@@ -46,17 +81,52 @@ export default function Page() {
             </div>
           </div>
 
-          <form className="space-y-4">
+          {successMessage && (
+            <div className="mb-4 rounded-md bg-green-500/10 p-3 text-sm text-green-600">
+              {successMessage}
+            </div>
+          )}
+
+          {error && (
+            <div className="mb-4 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+              {error}
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
-              <Input id="email" type="email" placeholder="you@example.com" required />
+              <Input
+                id="email"
+                type="email"
+                placeholder="you@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                disabled={isLoading}
+                required
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
-              <Input id="password" type="password" placeholder="Your password" required />
+              <Input
+                id="password"
+                type="password"
+                placeholder="Your password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                disabled={isLoading}
+                required
+              />
             </div>
-            <Button type="submit" className="w-full">
-              Sign In
+            <Button type="submit" className="w-full" disabled={isLoading}>
+              {isLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Signing in...
+                </>
+              ) : (
+                "Sign In"
+              )}
             </Button>
           </form>
 

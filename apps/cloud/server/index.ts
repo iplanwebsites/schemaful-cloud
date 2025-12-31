@@ -8,11 +8,16 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
+import { initTRPC } from "@trpc/server";
 import { appRouter, createContext, type User } from "@schemaful/trpc";
-import { handleAuth, getSession } from "@schemaful-ee/auth";
+import { handleAuth, getSession, hashPassword, cloudUsers, workspaces, workspaceMembers } from "@schemaful-ee/auth";
+import { provisionDatabase } from "@schemaful-ee/provisioning";
 import { createWebhookHandler } from "@schemaful-ee/billing";
 import { neon } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/neon-http";
+import { eq } from "drizzle-orm";
+import { z } from "zod";
+import { workspacesRouter } from "./routers/workspaces.js";
 
 const PORT = parseInt(process.env.PORT ?? "3001", 10);
 const isProduction = process.env.NODE_ENV === "production";
@@ -120,6 +125,65 @@ function getCloudDb() {
   return drizzle(sql);
 }
 
+// ============================================================================
+// Cloud tRPC Router
+// ============================================================================
+
+interface CloudUser {
+  id: string;
+  email: string;
+  name: string | null;
+  isSuperAdmin?: boolean;
+}
+
+interface CloudContext {
+  user: CloudUser | null;
+}
+
+const t = initTRPC.context<CloudContext>().create();
+
+/**
+ * Cloud App Router
+ * Combines the base CMS app router with cloud-specific features (workspaces, billing)
+ */
+const cloudRouter = t.router({
+  workspaces: workspacesRouter,
+});
+
+export type CloudRouter = typeof cloudRouter;
+
+/**
+ * Get user from Auth.js session for cloud context
+ */
+async function getCloudUserFromSession(req: Request): Promise<CloudUser | null> {
+  const session = await getSession(req);
+  if (!session?.user) return null;
+
+  return {
+    id: session.user.id!,
+    email: session.user.email!,
+    name: session.user.name ?? null,
+    isSuperAdmin: false, // TODO: Check from database if needed
+  };
+}
+
+/**
+ * Handle tRPC requests for cloud management APIs (workspaces, billing, etc.)
+ */
+async function handleCloudTrpcRequest(req: Request): Promise<Response> {
+  return fetchRequestHandler({
+    endpoint: "/api/cloud",
+    req,
+    router: cloudRouter,
+    createContext: async () => ({
+      user: await getCloudUserFromSession(req),
+    }),
+    onError({ error, path }) {
+      console.error(`Cloud tRPC error on ${path}:`, error);
+    },
+  });
+}
+
 /**
  * Convert Express request to Fetch Request
  */
@@ -203,6 +267,72 @@ async function startServer() {
   // Parse JSON bodies
   app.use(express.json());
 
+  // Signup validation schema
+  const signupSchema = z.object({
+    name: z.string().min(1, "Name is required").max(255, "Name too long"),
+    email: z.string().email("Invalid email address"),
+    password: z.string().min(8, "Password must be at least 8 characters"),
+  });
+
+  // Signup route (must come before general Auth.js routes)
+  app.post("/api/auth/signup", async (req, res) => {
+    try {
+      // Validate request body
+      const parseResult = signupSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        const errors = parseResult.error.flatten();
+        return res.status(400).json({
+          error: "Validation failed",
+          details: errors.fieldErrors,
+        });
+      }
+
+      const { name, email, password } = parseResult.data;
+      const normalizedEmail = email.toLowerCase();
+
+      const db = getCloudDb();
+
+      // Check if user already exists
+      const [existingUser] = await db
+        .select({ id: cloudUsers.id })
+        .from(cloudUsers)
+        .where(eq(cloudUsers.email, normalizedEmail))
+        .limit(1);
+
+      if (existingUser) {
+        return res.status(409).json({
+          error: "An account with this email already exists",
+          code: "EMAIL_EXISTS",
+        });
+      }
+
+      // Hash the password using Argon2id
+      const passwordHash = await hashPassword(password);
+
+      // Create the user
+      const userId = crypto.randomUUID();
+      await db.insert(cloudUsers).values({
+        id: userId,
+        name,
+        email: normalizedEmail,
+        passwordHash,
+        emailVerified: null,
+      });
+
+      // Return success - client will use credentials to sign in
+      return res.status(201).json({
+        success: true,
+        message: "Account created successfully",
+        redirectUrl: "/workspaces/new",
+      });
+    } catch (error) {
+      console.error("Signup error:", error);
+      return res.status(500).json({
+        error: "An error occurred while creating your account",
+      });
+    }
+  });
+
   // Auth.js routes
   app.all("/api/auth/*", async (req, res) => {
     try {
@@ -241,6 +371,164 @@ async function startServer() {
     }
   });
 
+  // Workspaces REST API (create and list workspaces)
+  app.get("/api/workspaces", async (req, res) => {
+    try {
+      const fetchReq = expressToFetchRequest(req);
+      const session = await getSession(fetchReq);
+
+      if (!session?.user) {
+        return res.status(401).json({
+          error: "Authentication required",
+          code: "UNAUTHORIZED",
+        });
+      }
+
+      const db = getCloudDb();
+
+      // Get all workspaces where user is a member
+      const userWorkspaces = await db
+        .select({
+          id: workspaces.id,
+          name: workspaces.name,
+          slug: workspaces.slug,
+          plan: workspaces.plan,
+          role: workspaceMembers.role,
+          createdAt: workspaces.createdAt,
+        })
+        .from(workspaces)
+        .innerJoin(workspaceMembers, eq(workspaces.id, workspaceMembers.workspaceId))
+        .where(eq(workspaceMembers.userId, session.user.id));
+
+      return res.status(200).json({
+        workspaces: userWorkspaces,
+      });
+    } catch (error) {
+      console.error("Error listing workspaces:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.post("/api/workspaces", async (req, res) => {
+    try {
+      const fetchReq = expressToFetchRequest(req);
+      const session = await getSession(fetchReq);
+
+      if (!session?.user) {
+        return res.status(401).json({
+          error: "Authentication required",
+          code: "UNAUTHORIZED",
+        });
+      }
+
+      // Validate request body
+      const createWorkspaceSchema = z.object({
+        name: z.string().min(1, "Workspace name is required").max(100, "Workspace name is too long"),
+        slug: z
+          .string()
+          .min(3, "Slug must be at least 3 characters")
+          .max(50, "Slug must be at most 50 characters")
+          .regex(/^[a-z][a-z0-9-]*[a-z0-9]$/, "Invalid slug format"),
+      });
+
+      const parseResult = createWorkspaceSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        const errors = parseResult.error.flatten();
+        return res.status(400).json({
+          error: "Validation failed",
+          details: errors.fieldErrors,
+        });
+      }
+
+      const { name, slug } = parseResult.data;
+      const db = getCloudDb();
+
+      // Check if slug is already taken
+      const [existingWorkspace] = await db
+        .select({ id: workspaces.id })
+        .from(workspaces)
+        .where(eq(workspaces.slug, slug))
+        .limit(1);
+
+      if (existingWorkspace) {
+        return res.status(409).json({
+          error: "This workspace URL is already taken",
+          code: "SLUG_EXISTS",
+        });
+      }
+
+      const workspaceId = crypto.randomUUID();
+
+      // Provision the Neon database if configured
+      let neonProjectId: string | undefined;
+      let databaseUrl: string | undefined;
+      let poolerUrl: string | undefined;
+
+      if (process.env.NEON_API_KEY) {
+        const provisionResult = await provisionDatabase(slug);
+        if (!provisionResult.success) {
+          console.error("Database provisioning failed:", provisionResult.error);
+          return res.status(500).json({
+            error: "Failed to provision database. Please try again.",
+            code: "PROVISIONING_FAILED",
+          });
+        }
+        neonProjectId = provisionResult.projectId;
+        databaseUrl = provisionResult.connectionString;
+        poolerUrl = provisionResult.poolerConnectionString;
+      }
+
+      // Insert workspace
+      await db.insert(workspaces).values({
+        id: workspaceId,
+        name,
+        slug,
+        neonProjectId: neonProjectId ?? null,
+        databaseUrl: databaseUrl ?? null,
+        poolerUrl: poolerUrl ?? null,
+        plan: "free",
+        settings: {},
+        isSuspended: false,
+      });
+
+      // Add the creator as owner
+      await db.insert(workspaceMembers).values({
+        workspaceId,
+        userId: session.user.id,
+        role: "owner",
+      });
+
+      return res.status(201).json({
+        success: true,
+        workspace: { id: workspaceId, name, slug },
+        redirectUrl: `/workspaces/${slug}`,
+      });
+    } catch (error) {
+      console.error("Error creating workspace:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Cloud management tRPC API (for workspace management, billing, etc.)
+  // Pattern: /api/cloud/*
+  app.all("/api/cloud/*", async (req, res) => {
+    try {
+      const fetchReq = expressToFetchRequest(req);
+      const fetchRes = await handleCloudTrpcRequest(fetchReq);
+
+      res.status(fetchRes.status);
+      fetchRes.headers.forEach((value, key) => {
+        res.setHeader(key, value);
+      });
+
+      const body = await fetchRes.text();
+      res.send(body);
+    } catch (error) {
+      console.error("Cloud tRPC handler error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
   // Workspace-scoped tRPC API handler
   // Pattern: /api/workspaces/:slug/trpc/*
   app.all("/api/workspaces/:slug/trpc/*", async (req, res) => {
@@ -264,7 +552,7 @@ async function startServer() {
     }
   });
 
-  // Cloud management tRPC API (for workspace management, billing, etc.)
+  // CMS tRPC API (for CMS operations within a workspace)
   app.all("/api/trpc/*", async (req, res) => {
     try {
       const fetchReq = expressToFetchRequest(req);
