@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "tsx watch server/index.ts",
     "build": "vite build",
+    "build:vercel": "vite build",
     "start": "node --import tsx server/index.ts",
     "preview": "npm run start",
     "typecheck": "tsc --noEmit",
@@ -77,9 +78,11 @@
     "tailwind-merge": "^2.6.0",
     "vike": "^0.4.212",
     "vike-react": "^0.6.6",
+    "vike-vercel": "^0.0.6",
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@vercel/node": "^5.0.0",
     "@tailwindcss/vite": "^4.0.0",
     "@types/express": "^5.0.0",
     "@types/node": "^22.10.2",

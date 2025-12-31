@@ -1,0 +1,14 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "pnpm build:vercel",
+  "outputDirectory": "apps/cloud/dist",
+  "installCommand": "pnpm install",
+  "framework": null,
+  "regions": ["iad1"],
+  "functions": {
+    "apps/cloud/api/**/*.ts": {
+      "runtime": "nodejs22.x",
+      "maxDuration": 30
+    }
+  }
+}
