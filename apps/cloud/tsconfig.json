@@ -1,0 +1,37 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "forceConsistentCasingInFileNames": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./*"],
+      "@schemaful/cms": ["../../../schemaful/packages/cms/src/index.ts"],
+      "@schemaful/trpc": ["../../../schemaful/packages/trpc/src/index.ts"],
+      "@schemaful/trpc/*": ["../../../schemaful/packages/trpc/src/*"],
+      "@schemaful/shared": ["../../../schemaful/packages/shared/src/index.ts"],
+      "@schemaful/ui": ["../../../schemaful/packages/ui/src/index.ts"],
+      "@schemaful-ee/auth": ["../../../schemaful-ee/packages/auth/src/index.ts"],
+      "@schemaful-ee/billing": ["../../../schemaful-ee/packages/billing/src/index.ts"],
+      "@schemaful-ee/provisioning": ["../../../schemaful-ee/packages/provisioning/src/index.ts"],
+      "@schemaful-ee/limits": ["../../../schemaful-ee/packages/limits/src/index.ts"],
+      "@schemaful-ee/admin": ["../../../schemaful-ee/packages/admin/src/index.ts"]
+    }
+  },
+  "include": ["**/*.ts", "**/*.tsx"],
+  "exclude": ["node_modules", "dist"]
+}

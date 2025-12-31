@@ -1,0 +1,19 @@
+{
+  "name": "schemaful-cloud",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Schemaful Cloud - Managed headless CMS service",
+  "scripts": {
+    "dev": "pnpm --filter @schemaful-cloud/app dev",
+    "build": "pnpm --filter @schemaful-cloud/app build",
+    "start": "pnpm --filter @schemaful-cloud/app start",
+    "typecheck": "pnpm -r typecheck"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  },
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}

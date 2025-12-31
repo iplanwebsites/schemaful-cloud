@@ -1,0 +1,8 @@
+# Schemaful Cloud - Managed CMS service
+# Links to schemaful (OSS) and schemaful-ee (modules) for local development
+packages:
+  - "apps/*"
+  # Link to OSS packages
+  - "../schemaful/packages/*"
+  # Link to EE packages
+  - "../schemaful-ee/packages/*"

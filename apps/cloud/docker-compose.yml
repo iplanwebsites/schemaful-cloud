@@ -1,0 +1,55 @@
+# ContentFern Cloud - Local Development Stack
+# Run with: docker-compose up -d
+
+version: "3.8"
+
+services:
+  # Cloud application
+  cloud:
+    build:
+      context: ../../../..
+      dockerfile: contentfern-ee/apps/cloud/Dockerfile
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - DATABASE_URL=${DATABASE_URL}
+      - AUTH_SECRET=${AUTH_SECRET}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
+      - STRIPE_PRO_PRICE_ID=${STRIPE_PRO_PRICE_ID}
+      - NEON_API_KEY=${NEON_API_KEY}
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
+  # Local PostgreSQL for development
+  # In production, use Neon serverless
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: contentfern
+      POSTGRES_PASSWORD: contentfern
+      POSTGRES_DB: contentfern_cloud
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  # Stripe webhook listener for local development
+  stripe-cli:
+    image: stripe/stripe-cli:latest
+    command: listen --forward-to http://cloud:3001/api/webhooks/stripe
+    environment:
+      - STRIPE_API_KEY=${STRIPE_SECRET_KEY}
+    depends_on:
+      - cloud
+    profiles:
+      - stripe
+
+volumes:
+  postgres_data:
