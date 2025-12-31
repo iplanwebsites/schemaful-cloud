@@ -9,12 +9,7 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
 import { appRouter, createContext, type User } from "@schemaful/trpc";
-import { createCms } from "@schemaful/cms";
-import {
-  handleAuth,
-  getSession,
-  getAuthjsConfig,
-} from "@schemaful-ee/auth";
+import { handleAuth, getSession } from "@schemaful-ee/auth";
 import { createWebhookHandler } from "@schemaful-ee/billing";
 import { neon } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/neon-http";
@@ -156,10 +151,7 @@ function expressToFetchRequest(req: express.Request): Request {
 /**
  * Get user from Auth.js session for a workspace
  */
-async function getUserFromSession(
-  req: Request,
-  workspaceDbUrl?: string
-): Promise<User | null> {
+async function getUserFromSession(req: Request): Promise<User | null> {
   const session = await getSession(req);
   if (!session?.user) return null;
 
@@ -174,21 +166,16 @@ async function getUserFromSession(
 /**
  * Handle tRPC requests for a specific workspace
  */
-async function handleTrpcRequest(
-  req: Request,
-  workspaceDbUrl?: string
-): Promise<Response> {
+async function handleTrpcRequest(req: Request): Promise<Response> {
   return fetchRequestHandler({
     endpoint: "/api/trpc",
     req,
     router: appRouter,
     createContext: async () =>
       createContext({
-        getUser: () => getUserFromSession(req, workspaceDbUrl),
+        getUser: () => getUserFromSession(req),
         requestId: req.headers.get("x-request-id") ?? undefined,
         updateImportProgress: () => {}, // TODO: implement for cloud
-        // Pass workspace DB URL for multi-tenant CMS operations
-        databaseUrl: workspaceDbUrl,
       }),
     onError({ error, path }) {
       console.error(`tRPC error on ${path}:`, error);
@@ -247,14 +234,10 @@ async function startServer() {
       const handler = createWebhookHandler(db as any);
       const result = await handler(req.body, signature);
 
-      if (result.success) {
-        res.json({ received: true });
-      } else {
-        res.status(400).json({ error: result.error });
-      }
+      res.json({ received: result.received, eventType: result.eventType });
     } catch (error) {
       console.error("Stripe webhook error:", error);
-      res.status(500).json({ error: "Webhook processing failed" });
+      res.status(400).json({ error: "Webhook processing failed" });
     }
   });
 
@@ -262,14 +245,11 @@ async function startServer() {
   // Pattern: /api/workspaces/:slug/trpc/*
   app.all("/api/workspaces/:slug/trpc/*", async (req, res) => {
     try {
-      const { slug } = req.params;
-
-      // TODO: Look up workspace DB URL from cloud database
+      // TODO: Look up workspace DB URL from cloud database using req.params.slug
       // For now, use a placeholder - in production this would query the workspaces table
-      const workspaceDbUrl = process.env.DATABASE_URL; // Placeholder
 
       const fetchReq = expressToFetchRequest(req);
-      const fetchRes = await handleTrpcRequest(fetchReq, workspaceDbUrl);
+      const fetchRes = await handleTrpcRequest(fetchReq);
 
       res.status(fetchRes.status);
       fetchRes.headers.forEach((value, key) => {

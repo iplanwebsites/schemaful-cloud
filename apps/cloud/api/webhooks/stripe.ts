@@ -45,13 +45,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const handler = createWebhookHandler(db as any);
     const result = await handler(rawBody, signature);
 
-    if (result.success) {
-      res.json({ received: true });
-    } else {
-      res.status(400).json({ error: result.error });
-    }
+    res.json({ received: result.received, eventType: result.eventType });
   } catch (error) {
     console.error("Stripe webhook error:", error);
-    res.status(500).json({ error: "Webhook processing failed" });
+    res.status(400).json({ error: "Webhook processing failed" });
   }
 }

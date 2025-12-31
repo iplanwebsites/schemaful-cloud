@@ -36,3 +36,27 @@ pnpm dev
 ## Environment Variables
 
 See `apps/cloud/.env.example` for required configuration.
+
+## Vercel Deployment
+
+This repo requires access to sibling repositories during build.
+
+### Setup
+
+1. **Create a GitHub Personal Access Token** with `repo` scope at https://github.com/settings/tokens
+
+2. **Add environment variables in Vercel** (Project Settings > Environment Variables):
+   - `GITHUB_TOKEN` - Your GitHub PAT (for cloning private schemaful-ee repo)
+   - `DATABASE_URL` - Neon PostgreSQL connection string
+   - `AUTH_SECRET` - Generate with: `openssl rand -base64 32`
+   - Plus any optional vars from `.env.example`
+
+3. **Deploy** - Push to main branch or trigger via Vercel dashboard
+
+### How it works
+
+The `vercel.json` install command clones the sibling repos before running `pnpm install`:
+- `schemaful` (public) - OSS core packages
+- `schemaful-ee` (private) - Enterprise modules (requires GITHUB_TOKEN)
+
+This allows pnpm workspace links (`../schemaful/*`, `../schemaful-ee/*`) to resolve correctly.
