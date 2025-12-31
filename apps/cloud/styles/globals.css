@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 /* Include UI package components for Tailwind class scanning */
-@source "../../../schemaful/packages/ui/src/**/*.tsx";
+@source "../../../../schemaful/packages/ui/src/**/*.tsx";
 
 /* Schemaful Cloud Theme */
 :root {
