@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "pnpm --filter @schemaful-cloud/app dev",
     "build": "pnpm --filter @schemaful-cloud/app build",
+    "build:vercel": "pnpm --filter @schemaful-cloud/app build:vercel",
     "start": "pnpm --filter @schemaful-cloud/app start",
     "typecheck": "pnpm -r typecheck"
   },

@@ -78,7 +78,6 @@
     "tailwind-merge": "^2.6.0",
     "vike": "^0.4.212",
     "vike-react": "^0.6.6",
-    "vike-vercel": "^0.0.6",
     "zod": "^3.24.1"
   },
   "devDependencies": {

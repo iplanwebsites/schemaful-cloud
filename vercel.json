@@ -8,7 +8,26 @@
   "functions": {
     "apps/cloud/api/**/*.ts": {
       "runtime": "nodejs22.x",
-      "maxDuration": 30
+      "maxDuration": 30,
+      "includeFiles": "apps/cloud/dist/**"
     }
-  }
+  },
+  "rewrites": [
+    {
+      "source": "/api/auth/:path*",
+      "destination": "/api/auth/[...auth]"
+    },
+    {
+      "source": "/api/trpc/:path*",
+      "destination": "/api/trpc/[...trpc]"
+    },
+    {
+      "source": "/assets/:path*",
+      "destination": "/assets/:path*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/api/ssr"
+    }
+  ]
 }
