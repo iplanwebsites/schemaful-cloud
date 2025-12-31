@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch --env-file=.env server/index.ts",
+    "dev": "tsx watch --env-file=.env --ignore '**/*.build-*.mjs' server/index.ts",
     "build": "vite build",
     "build:vercel": "vite build",
     "start": "node --import tsx server/index.ts",
